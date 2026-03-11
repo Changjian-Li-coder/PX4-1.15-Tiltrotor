@@ -1,0 +1,5 @@
+menuconfig MODULES_MY_CONTROL
+	bool "my_control"
+	default n
+	---help---
+		Enable the my_control simple UART read/write module
