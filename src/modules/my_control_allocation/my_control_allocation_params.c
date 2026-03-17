@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- *   Copyright (c) 2021 PX4 Development Team. All rights reserved.
+ *   Copyright (c) 2013-2019 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,29 +31,21 @@
  *
  ****************************************************************************/
 
-#pragma once
+/**
+ * @file my_control_allocation_params.c
+ *
+ * Parameters for my_control_allocation module
+ */
 
-#include "ActuatorEffectiveness.hpp"
-#include "ActuatorEffectivenessRotors.hpp"
-#include "ActuatorEffectivenessControlSurfaces.hpp"
-
-class ActuatorEffectivenessCustom : public ModuleParams, public ActuatorEffectiveness
-{
-public:
-	ActuatorEffectivenessCustom(ModuleParams *parent);
-	virtual ~ActuatorEffectivenessCustom() = default;
-
-	bool getEffectivenessMatrix(Configuration &configuration, EffectivenessUpdateReason external_update) override;
-
-	void updateSetpoint(const matrix::Vector<float, NUM_AXES> &control_sp, int matrix_index,
-			    ActuatorVector &actuator_sp, const matrix::Vector<float, NUM_ACTUATORS> &actuator_min,
-			    const matrix::Vector<float, NUM_ACTUATORS> &actuator_max) override;
-
-	const char *name() const override { return "Custom"; }
-
-protected:
-	ActuatorEffectivenessRotors _motors;
-	ActuatorEffectivenessControlSurfaces _torque;
-
-	uint32_t _motors_mask{};
-};
+/**
+ * my_control_allocation 最大更新频率
+ *
+ * 控制 my_control_allocation 模块执行串口发送的最大频率。
+ *
+ * @unit Hz
+ * @min 1
+ * @max 200
+ * @increment 1
+ * @group My Control
+ */
+PARAM_DEFINE_INT32(SER_CTL_RATE, 10);

@@ -1,0 +1,14 @@
+module_name: my_control_allocation
+
+parameters:
+  - group: Control Configuration
+    definitions:
+      SER_CTL_RATE:
+        type: int32
+        default: 10
+        min: 1
+        max: 200
+        increment: 1
+        unit: Hz
+        description: |
+          Controls the maximum update rate used by the my_control_allocation module.

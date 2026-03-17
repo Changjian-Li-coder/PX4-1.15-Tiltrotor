@@ -1,0 +1,5 @@
+menuconfig MODULES_MY_CONTROL_TEST
+	bool "my_control_test"
+	default n
+	---help---
+		Enable the my_control_test simple UART read/write module

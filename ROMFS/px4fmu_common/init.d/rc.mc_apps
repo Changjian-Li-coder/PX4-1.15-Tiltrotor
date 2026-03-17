@@ -37,6 +37,6 @@ mc_pos_control start
 #
 land_detector start multicopter
 
-# my_control start
+# my_control_allocation start
 # my_uart start
 # my_uart_test start
