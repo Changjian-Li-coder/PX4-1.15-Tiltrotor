@@ -32,20 +32,20 @@
  ****************************************************************************/
 
 /**
- * @file my_control_allocation_params.c
+ * @file my_control_params.c
  *
- * Parameters for my_control_allocation module
+ * Parameters for my_control module
  */
 
 /**
- * my_control_allocation 最大更新频率
+ * my_control 周期发送频率
  *
- * 控制 my_control_allocation 模块执行串口发送的最大频率。
+ * 控制 my_control 模块发送查询命令的频率。
  *
  * @unit Hz
  * @min 1
  * @max 200
  * @increment 1
- * @group My Control
+ * @group My UART
  */
-PARAM_DEFINE_INT32(SER_CTL_RATE, 10);
+//PARAM_DEFINE_INT32(SER_CTL_RATE, 10);

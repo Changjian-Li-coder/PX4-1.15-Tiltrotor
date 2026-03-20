@@ -1,0 +1,5 @@
+menuconfig MODULES_MY_CONTROL_ALLOCATOR
+	bool "my_control_allocator"
+	default n
+	---help---
+		Enable the my_control_allocator simple UART read/write module

@@ -1,5 +1,0 @@
-menuconfig MODULES_MY_CONTROL_ALLOCATION
-	bool "my_control_allocation"
-	default n
-	---help---
-		Enable the my_control_allocation UART tilt control module
