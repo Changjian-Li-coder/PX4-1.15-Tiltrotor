@@ -462,8 +462,23 @@ ControlAllocator::Run()
 		_last_status_pub = now;
 	}
 
+	// Add logging at 2Hz
+	if(now - _last_log_time >= 500_ms) {
+		PX4_INFO("vehicle_torque_setpoint: [%.2f, %.2f, %.2f]",
+			(double)vehicle_torque_setpoint.xyz[0],
+			(double)vehicle_torque_setpoint.xyz[1],
+			(double)vehicle_torque_setpoint.xyz[2]);
+
+		PX4_INFO("vehicle_thrust_setpoint: [%.2f, %.2f, %.2f]",
+			(double)vehicle_thrust_setpoint.xyz[0],
+			(double)vehicle_thrust_setpoint.xyz[1],
+			(double)vehicle_thrust_setpoint.xyz[2]);
+
+		_last_log_time = now;
+	}
 	perf_end(_loop_perf);
 }
+
 
 void
 ControlAllocator::update_effectiveness_matrix_if_needed(EffectivenessUpdateReason reason)
@@ -694,6 +709,8 @@ ControlAllocator::publish_actuator_controls()
 
 	_actuator_motors_pub.publish(actuator_motors);
 
+	log_actuator_motors_at_2hz(actuator_motors);
+
 	// servos
 	if (_num_actuators[1] > 0) {
 		int servos_idx;
@@ -712,6 +729,16 @@ ControlAllocator::publish_actuator_controls()
 
 		_actuator_servos_pub.publish(actuator_servos);
 	}
+}
+
+void
+ControlAllocator::log_actuator_motors_at_2hz(const actuator_motors_s &actuator_motors)
+{
+        PX4_INFO("actuator_motors: [%.2f, %.2f, %.2f, %.2f]",
+                 (double)actuator_motors.control[0],
+                 (double)actuator_motors.control[1],
+                 (double)actuator_motors.control[2],
+                 (double)actuator_motors.control[3]);
 }
 
 void

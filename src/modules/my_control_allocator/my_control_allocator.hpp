@@ -6,8 +6,10 @@
 #include <uORB/topics/actuator_motors.h>
 #include <uORB/topics/vehicle_thrust_setpoint.h>
 #include <uORB/topics/vehicle_torque_setpoint.h>
+#include <parameters/param.h>
 
 #include <matrix/matrix/math.hpp>
+#include "allocation_calculation.hpp"
 
 class MyControlAllocator
 {
@@ -15,46 +17,83 @@ public:
 	static int main(int argc, char *argv[]);
 
 private:
-	static int start();
-	static int stop();
-	static int status();
-	static void usage();
-	static int task_main(int argc, char *argv[]);
-	static int run();
+	static MyControlAllocator *_instance; // Singleton instance
 
-	static int uart_init(const char *uart_name);
-	static int set_uart_baudrate(int fd, unsigned baud);
-	static void initialize_matrices();
-	static void get_control_matrix(const vehicle_thrust_setpoint_s &thrust, const vehicle_torque_setpoint_s &torque, matrix::Vector<float, 6> &control_matrix);
-	static void normalization_thrust(matrix::Vector<float, 4> &motor_thrusts);
-	static void normalization_servo_angle(matrix::Vector<float, 4> &servo_angles);
-	static void allocation_calculation(const matrix::Vector<float, 6> &control_matrix, matrix::Vector<float, 4> &motor_thrusts, matrix::Vector<float, 4> &servo_angles);
-	static void write_to_uart(const matrix::Vector<float, 4> &servo_angles, int fd);
-	static void publish_actuator_motors(const matrix::Vector<float, 4> &motor_throttle);
+	int start();
+	int stop();
+	int status();
+	void usage();
+	int task_main(int argc, char *argv[]);
+	int run();
 
-	static bool _task_should_exit;
-	static bool _is_running;
-	static int _task_handle;
-	static const char *_device_name; // 声明，不初始化
-	static const unsigned _baudrate = 9600;
+	int uart_init(const char *uart_name);
+	int set_uart_baudrate(int fd, unsigned baud);
+	void init();
+	void initialize_matrices();
+	void get_control_matrix(const vehicle_thrust_setpoint_s &thrust, const vehicle_torque_setpoint_s &torque, matrix::Vector<float, 6> &control_matrix);
+	void normalization_thrust(matrix::Vector<float, 4> &motor_thrusts);
+	void normalization_servo_angle(matrix::Vector<float, 4> &servo_angles);
+	void write_to_uart(const matrix::Vector<float, 4> &servo_angles, int fd);
+	void publish_actuator_motors(const matrix::Vector<float, 4> &motor_throttle);
 
-	static matrix::Matrix<float, 6, 8> _matrix_A; // 声明为静态成员
-	static matrix::Matrix<float, 8, 6> _matrix_mix; // 声明为静态成员
-	static matrix::Vector<float, 6> _matrix_ctl; // 声明为静态成员
-	static matrix::Vector<float, 8> _matrix_b; // 声明为静态成员
-	static matrix::Vector<float, 4> _matrix_F; // 声明为静态成员
-	static matrix::Vector<float, 4> _matrix_a; // 声明为静态成员
+	void log_data_at_2hz();
+	void parameters_init();
+	void parameters_update();
+	void update_tau_max();
 
-	static constexpr float _L = 0.5f;
-	static constexpr float _kf = 0.1f;
-	static constexpr float _k = 0.7071f;
-	static constexpr float _rad_to_deg = 57.2957795f;
+	bool _task_should_exit = false;
+	bool _is_running = false;
+	int _task_handle = -1;
+	bool _is_initialized = false;
+	const char *_device_name = "/dev/ttyS2";
+	const unsigned _baudrate = 9600;
 
-	static vehicle_torque_setpoint_s _torque_sp; // 声明为静态成员
-	static vehicle_thrust_setpoint_s _thrust_sp; // 声明为静态成员
-	static uORB::Subscription _thrust_sub; // 声明为静态成员
-	static uORB::Subscription _torque_sub; // 声明为静态成员
-	static uORB::Publication<actuator_motors_s> _actuator_motors_pub; // 声明为静态成员，无需类内初始化
+	matrix::Matrix<float, 6, 8> _matrix_A;
+	matrix::Matrix<float, 8, 6> _matrix_mix;
+	matrix::Vector<float, 6> _matrix_U;
+	matrix::Vector<float, 8> _matrix_b;
+	matrix::Vector<float, 4> _matrix_T;
+	matrix::Vector<float, 4> _matrix_a;
+	matrix::Vector<float, 8> _x_out;
+	matrix::Vector<float, 8> _current_state;
 
+
+
+	float sqrt2_2 = 0.7071f;
+	float _rad_to_deg = 57.2957795f;
+
+
+	// 参数句柄
+	param_t _param_my_l = PARAM_INVALID;
+	param_t _param_my_k = PARAM_INVALID;
+	param_t _param_my_lambda_thrust = PARAM_INVALID;
+	param_t _param_my_lambda_servo = PARAM_INVALID;
+	param_t _param_my_thrust_min = PARAM_INVALID;
+	param_t _param_my_thrust_max = PARAM_INVALID;
+	param_t _param_my_ser_ang_lim = PARAM_INVALID;
+	param_t _param_my_max_iter = PARAM_INVALID;
+	param_t _param_my_learning_rate = PARAM_INVALID;
+
+	// 参数缓存值
+	float _L = 0.18f;  // 轴距365mm
+	float _kf = 0.1f;
+	float _tau_roll_max = _L * 4.f * sqrt2_2;
+	float _tau_pitch_max = _L * 4.f * sqrt2_2;
+	float _tau_yaw_max = _L * 4.f;
+	float _lambda_thrust = 0.001f;
+	float _lambda_servo = 0.5f;
+	float _thrust_min = 0.1f;
+	float _thrust_max = 0.9f;
+	float _servo_angle_limit_deg = 22.5f;
+	int32_t _max_iter = 10;
+	float _learning_rate = 0.01f;
+
+	vehicle_torque_setpoint_s _torque_sp;
+	vehicle_thrust_setpoint_s _thrust_sp;
+	uORB::Subscription _thrust_sub{ORB_ID(vehicle_thrust_setpoint)};
+	uORB::Subscription _torque_sub{ORB_ID(vehicle_torque_setpoint)};
+	uORB::Publication<actuator_motors_s> _actuator_motors_pub{ORB_ID(actuator_motors)};
+
+	AllocationCalculation _allocator;
 };
 

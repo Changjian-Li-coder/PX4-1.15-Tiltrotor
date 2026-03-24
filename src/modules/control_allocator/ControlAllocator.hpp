@@ -138,6 +138,8 @@ private:
 
 	void publish_actuator_controls();
 
+	void log_actuator_motors_at_2hz(const actuator_motors_s &actuator_motors);
+
 	AllocationMethod _allocation_method_id{AllocationMethod::NONE};
 	ControlAllocation *_control_allocation[ActuatorEffectiveness::MAX_NUM_MATRICES] {}; 	///< class for control allocation calculations
 	int _num_control_allocation{0};
@@ -204,7 +206,8 @@ private:
 	bool _armed{false};
 	hrt_abstime _last_run{0};
 	hrt_abstime _timestamp_sample{0};
-	hrt_abstime _last_status_pub{0};
+	hrt_abstime _last_status_pub{0};\
+	hrt_abstime _last_log_time{0};
 
 	ParamHandles _param_handles{};
 	Params _params{};

@@ -8,8 +8,8 @@
 #
 # Start Control Allocator
 #
-#control_allocator start
-#my_control_allocation start vtol
+control_allocator start
+# my_control_allocator start
 
 #
 # Start Multicopter Rate Controller.

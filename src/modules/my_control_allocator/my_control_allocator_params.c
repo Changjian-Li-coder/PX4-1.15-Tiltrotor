@@ -37,6 +37,8 @@
  * Parameters for my_control module
  */
 
+#include <parameters/param.h>
+
 /**
  * my_control 周期发送频率
  *
@@ -49,3 +51,111 @@
  * @group My UART
  */
 //PARAM_DEFINE_INT32(SER_CTL_RATE, 10);
+
+/**
+ * 机臂长度
+ *
+ * 定义四旋翼机臂的长度，单位为米。
+ *
+ * @unit m
+ * @min 0.1
+ * @max 0.5
+ * @group My Control Allocator
+ */
+PARAM_DEFINE_FLOAT(MY_L, 0.182);
+
+/**
+ * 推力-反扭矩比例系数
+ *
+ * 定义推力与反扭矩之间的比例关系。
+ *
+
+ * @min 0.001
+ * @max 0.1
+ * @group My Control Allocator
+ */
+PARAM_DEFINE_FLOAT(MY_K, 0.01);
+
+/**
+ * 推力惩罚系数
+ *
+ * 定义优化过程中推力的惩罚权重。
+ *
+
+ * @min 0.0
+ * @max 10.0
+ * @group My Control Allocator
+ */
+PARAM_DEFINE_FLOAT(MY_LAMBDA_THRUST, 0.001);
+
+/**
+ * 舵机角度惩罚系数
+ *
+ * 定义优化过程中舵机角度的惩罚权重。
+ *
+
+ * @min 0.0
+ * @max 10.0
+ * @group My Control Allocator
+ */
+PARAM_DEFINE_FLOAT(MY_LAMBDA_SERVO, 0.5);
+
+/**
+ * 推力限幅的最小值
+ *
+ * 定义推力的最小限制值，单位为无量纲比例。
+ *
+
+ * @min 0.0
+ * @max 1.0
+ * @group My Control Allocator
+ */
+PARAM_DEFINE_FLOAT(MY_THRUST_MIN, 0.1);
+
+/**
+ * 推力限幅的最大值
+ *
+ * 定义推力的最大限制值，单位为无量纲比例。
+ *
+
+ * @min 0.0
+ * @max 1.0
+ * @group My Control Allocator
+ */
+PARAM_DEFINE_FLOAT(MY_THRUST_MAX, 0.9);
+
+/**
+ * 舵机角度限幅
+ *
+ * 定义舵机角度的最大限制值，单位为度。
+ *
+ * @unit deg
+ * @min 0.0
+ * @max 45.0
+ * @group My Control Allocator
+ */
+PARAM_DEFINE_FLOAT(MY_SER_ANG_LIM, 22.5);
+
+/**
+ * 最大迭代次数
+ *
+ * 定义优化算法的最大迭代次数。
+ *
+
+ * @min 1
+ * @max 100
+ * @group My Control Allocator
+ */
+PARAM_DEFINE_INT32(MY_MAX_ITER, 10);
+
+/**
+ * 梯度下降步长
+ *
+ * 定义优化算法中梯度下降的步长。
+ *
+
+ * @min 0.001
+ * @max 1.0
+ * @group My Control Allocator
+ */
+PARAM_DEFINE_FLOAT(MY_LEARNING_RATE, 0.01);

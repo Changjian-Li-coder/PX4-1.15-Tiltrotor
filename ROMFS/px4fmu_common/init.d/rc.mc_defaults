@@ -22,6 +22,16 @@ param set-default RTL_DESCEND_ALT 10
 
 param set-default GPS_UBX_DYNMODEL 6
 
-# my_uart custom parameter (mark as used so it appears in QGC)
-param set-default MY_UART_RATE 10
-param set-default SER_CTL_RATE 10
+# 自定义参数初始化
+param set-default MY_L 0.182
+param set-default MY_K 0.01
+param set-default MY_LAMBDA_THRUST 0.001
+param set-default MY_LAMBDA_SERVO 0.5
+param set-default MY_THRUST_MIN 0.1
+param set-default MY_THRUST_MAX 0.9
+param set-default MY_SER_ANG_LIM 22.5
+param set-default MY_MAX_ITER 10
+param set-default MY_LEARNING_RATE 0.01
+
+
+

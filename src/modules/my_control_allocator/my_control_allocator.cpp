@@ -15,21 +15,96 @@
 #include <termios.h>
 #include <unistd.h>
 
-const char *MyControlAllocator::_device_name = "/dev/ttyS2"; // 在类外初始化
-uORB::Publication<actuator_motors_s> MyControlAllocator::_actuator_motors_pub{ORB_ID(actuator_motors)}; // 初始化静态成员
-vehicle_torque_setpoint_s MyControlAllocator::_torque_sp{}; // 初始化静态成员
-vehicle_thrust_setpoint_s MyControlAllocator::_thrust_sp{}; // 初始化静态成员
-uORB::Subscription MyControlAllocator::_thrust_sub{ORB_ID(vehicle_thrust_setpoint)}; // 初始化静态成员
-uORB::Subscription MyControlAllocator::_torque_sub{ORB_ID(vehicle_torque_setpoint)}; // 初始化静态成员
-matrix::Matrix<float, 6, 8> MyControlAllocator::_matrix_A; // 初始化静态成员
-matrix::Matrix<float, 8, 6> MyControlAllocator::_matrix_mix; // 初始化静态成员
-matrix::Vector<float, 6> MyControlAllocator::_matrix_ctl; // 初始化静态成员
-matrix::Vector<float, 8> MyControlAllocator::_matrix_b; // 初始化静态成员
-matrix::Vector<float, 4> MyControlAllocator::_matrix_F; // 初始化静态成员
-matrix::Vector<float, 4> MyControlAllocator::_matrix_a; // 初始化静态成员
-bool MyControlAllocator::_task_should_exit = false; // 初始化静态成员
-bool MyControlAllocator::_is_running = false; // 初始化静态成员
-int MyControlAllocator::_task_handle = -1; // 初始化静态成员
+MyControlAllocator *MyControlAllocator::_instance = nullptr;
+
+void MyControlAllocator::parameters_init()
+{
+	_param_my_l = param_find("MY_L");
+	_param_my_k = param_find("MY_K");
+	_param_my_lambda_thrust = param_find("MY_LAMBDA_THRUST");
+	_param_my_lambda_servo = param_find("MY_LAMBDA_SERVO");
+	_param_my_thrust_min = param_find("MY_THRUST_MIN");
+	_param_my_thrust_max = param_find("MY_THRUST_MAX");
+	_param_my_ser_ang_lim = param_find("MY_SER_ANG_LIM");
+	_param_my_max_iter = param_find("MY_MAX_ITER");
+	_param_my_learning_rate = param_find("MY_LEARNING_RATE");
+}
+
+void MyControlAllocator::update_tau_max()
+{
+	_tau_roll_max = _L * 4.f * sqrt2_2;
+	_tau_pitch_max = _L * 4.f * sqrt2_2;
+	_tau_yaw_max = _L * 4.f;
+}
+
+void MyControlAllocator::parameters_update()
+{
+	float l = _L;
+	float k = _kf;
+	float lambda_thrust = _lambda_thrust;
+	float lambda_servo = _lambda_servo;
+	float thrust_min = _thrust_min;
+	float thrust_max = _thrust_max;
+	float servo_angle_limit_deg = _servo_angle_limit_deg;
+	int32_t max_iter = _max_iter;
+	float learning_rate = _learning_rate;
+
+	if (_param_my_l != PARAM_INVALID) {
+		(void)param_get(_param_my_l, &l);
+	}
+
+	if (_param_my_k != PARAM_INVALID) {
+		(void)param_get(_param_my_k, &k);
+	}
+
+	if (_param_my_lambda_thrust != PARAM_INVALID) {
+		(void)param_get(_param_my_lambda_thrust, &lambda_thrust);
+	}
+
+	if (_param_my_lambda_servo != PARAM_INVALID) {
+		(void)param_get(_param_my_lambda_servo, &lambda_servo);
+	}
+
+	if (_param_my_thrust_min != PARAM_INVALID) {
+		(void)param_get(_param_my_thrust_min, &thrust_min);
+	}
+
+	if (_param_my_thrust_max != PARAM_INVALID) {
+		(void)param_get(_param_my_thrust_max, &thrust_max);
+	}
+
+	if (_param_my_ser_ang_lim != PARAM_INVALID) {
+		(void)param_get(_param_my_ser_ang_lim, &servo_angle_limit_deg);
+	}
+
+	if (_param_my_max_iter != PARAM_INVALID) {
+		(void)param_get(_param_my_max_iter, &max_iter);
+	}
+
+	if (_param_my_learning_rate != PARAM_INVALID) {
+		(void)param_get(_param_my_learning_rate, &learning_rate);
+	}
+
+	const bool geometry_changed = (fabsf(l - _L) > 1e-6f) || (fabsf(k - _kf) > 1e-6f);
+
+	_L = l;
+	_kf = k;
+	_lambda_thrust = lambda_thrust;
+	_lambda_servo = lambda_servo;
+	_thrust_min = thrust_min;
+	_thrust_max = thrust_max;
+	_servo_angle_limit_deg = servo_angle_limit_deg;
+	_max_iter = max_iter;
+	_learning_rate = learning_rate;
+
+	_allocator.set_parameters(_lambda_thrust, _lambda_servo, _thrust_min, _thrust_max,
+				      _servo_angle_limit_deg, _max_iter, _learning_rate);
+
+	if (geometry_changed) {
+		initialize_matrices();
+	}
+}
+
 int MyControlAllocator::uart_init(const char *uart_name)
 {
 	const int serial_fd = ::open(uart_name, O_RDWR | O_NOCTTY | O_NONBLOCK);
@@ -84,25 +159,38 @@ int MyControlAllocator::set_uart_baudrate(int fd, unsigned baud)
 	return 0;
 }
 
+void MyControlAllocator::init()
+{
+	parameters_init();
+	parameters_update();
+
+	for (int i = 0; i < 4; ++i) {
+		_x_out(2 * i) = _thrust_min; // 给一个微小的初始推力，避免梯度为0
+		_x_out(2 * i + 1) = 0.0f; // 舵机回中
+	}
+
+	update_tau_max();
+	initialize_matrices();
+}
 void MyControlAllocator::initialize_matrices()
 {
-	_matrix_A(0, 0) = 0.f;    _matrix_A(0, 1) = -_k;      _matrix_A(0, 2) = 0.f;    _matrix_A(0, 3) =  _k;
-	_matrix_A(0, 4) = 0.f;    _matrix_A(0, 5) =  _k;      _matrix_A(0, 6) = 0.f;    _matrix_A(0, 7) = -_k;
+	_matrix_A(0, 0) = 0.f;    _matrix_A(0, 1) = -sqrt2_2;      _matrix_A(0, 2) = 0.f;    _matrix_A(0, 3) =  sqrt2_2;
+	_matrix_A(0, 4) = 0.f;    _matrix_A(0, 5) =  sqrt2_2;      _matrix_A(0, 6) = 0.f;    _matrix_A(0, 7) = -sqrt2_2;
 
-	_matrix_A(1, 0) = 0.f;    _matrix_A(1, 1) =  _k;      _matrix_A(1, 2) = 0.f;    _matrix_A(1, 3) = -_k;
-	_matrix_A(1, 4) = 0.f;    _matrix_A(1, 5) =  _k;      _matrix_A(1, 6) = 0.f;    _matrix_A(1, 7) = -_k;
+	_matrix_A(1, 0) = 0.f;    _matrix_A(1, 1) =  sqrt2_2;      _matrix_A(1, 2) = 0.f;    _matrix_A(1, 3) = -sqrt2_2;
+	_matrix_A(1, 4) = 0.f;    _matrix_A(1, 5) =  sqrt2_2;      _matrix_A(1, 6) = 0.f;    _matrix_A(1, 7) = -sqrt2_2;
 
 	_matrix_A(2, 0) = -1.f;   _matrix_A(2, 1) = 0.f;      _matrix_A(2, 2) = -1.f;   _matrix_A(2, 3) = 0.f;
 	_matrix_A(2, 4) = -1.f;   _matrix_A(2, 5) = 0.f;      _matrix_A(2, 6) = -1.f;   _matrix_A(2, 7) = 0.f;
 
-	_matrix_A(3, 0) = -_k * _L; _matrix_A(3, 1) =  _k * _kf; _matrix_A(3, 2) =  _k * _L; _matrix_A(3, 3) = -_k * _kf;
-	_matrix_A(3, 4) =  _k * _L; _matrix_A(3, 5) =  _k * _kf; _matrix_A(3, 6) = -_k * _L; _matrix_A(3, 7) = -_k * _kf;
+	_matrix_A(3, 0) = -sqrt2_2 * _L; _matrix_A(3, 1) = -sqrt2_2 * _kf; _matrix_A(3, 2) =  sqrt2_2 * _L; _matrix_A(3, 3) =  sqrt2_2 * _kf;
+	_matrix_A(3, 4) =  sqrt2_2 * _L; _matrix_A(3, 5) =  sqrt2_2 * _kf; _matrix_A(3, 6) = -sqrt2_2 * _L; _matrix_A(3, 7) = -sqrt2_2 * _kf;
 
-	_matrix_A(4, 0) =  _k * _L; _matrix_A(4, 1) = -_k * _kf; _matrix_A(4, 2) = -_k * _L; _matrix_A(4, 3) =  _k * _kf;
-	_matrix_A(4, 4) =  _k * _L; _matrix_A(4, 5) =  _k * _kf; _matrix_A(4, 6) = -_k * _L; _matrix_A(4, 7) = -_k * _kf;
+	_matrix_A(4, 0) =  sqrt2_2 * _L; _matrix_A(4, 1) =  sqrt2_2 * _kf; _matrix_A(4, 2) = -sqrt2_2 * _L; _matrix_A(4, 3) = -sqrt2_2 * _kf;
+	_matrix_A(4, 4) =  sqrt2_2 * _L; _matrix_A(4, 5) =  sqrt2_2 * _kf; _matrix_A(4, 6) = -sqrt2_2 * _L; _matrix_A(4, 7) = -sqrt2_2 * _kf;
 
-	_matrix_A(5, 0) =  _k;    _matrix_A(5, 1) =  _L;      _matrix_A(5, 2) =  _k;    _matrix_A(5, 3) =  _L;
-	_matrix_A(5, 4) = -_k;    _matrix_A(5, 5) =  _L;      _matrix_A(5, 6) = -_k;    _matrix_A(5, 7) =  _L;
+	_matrix_A(5, 0) =  -_kf;    _matrix_A(5, 1) =  _L;      _matrix_A(5, 2) =  -_kf;    _matrix_A(5, 3) =  _L;
+	_matrix_A(5, 4) =   _kf;    _matrix_A(5, 5) =  _L;      _matrix_A(5, 6) =   _kf;    _matrix_A(5, 7) =  _L;
 
 	if (!matrix::geninv(_matrix_A, _matrix_mix)) {
 		PX4_ERR("failed to compute pseudo-inverse for matrix_A");
@@ -112,27 +200,14 @@ void MyControlAllocator::initialize_matrices()
 void MyControlAllocator::get_control_matrix(const vehicle_thrust_setpoint_s &thrust, const vehicle_torque_setpoint_s &torque,
 			matrix::Vector<float, 6> &control_matrix)
 {
-	control_matrix(0) = thrust.xyz[0];
-	control_matrix(1) = thrust.xyz[1];
-	control_matrix(2) = thrust.xyz[2];
-	control_matrix(3) = torque.xyz[0];
-	control_matrix(4) = torque.xyz[1];
-	control_matrix(5) = torque.xyz[2];
+	control_matrix(0) = thrust.xyz[0] * 4;
+	control_matrix(1) = thrust.xyz[1] * 4;
+	control_matrix(2) = thrust.xyz[2] * 4;
+	control_matrix(3) = torque.xyz[0] * _tau_roll_max;
+	control_matrix(4) = torque.xyz[1] * _tau_pitch_max;
+	control_matrix(5) = torque.xyz[2] * _tau_yaw_max;
 }
 
-void MyControlAllocator::allocation_calculation(const matrix::Vector<float, 6> &control_matrix, matrix::Vector<float, 4> &motor_thrusts, matrix::Vector<float, 4> &servo_angles)
-{
-
-	// Compute the mixed control inputs
-	matrix::Vector<float, 8> mixed_controls = _matrix_mix * control_matrix;
-
-	for (int i = 0; i < 4; ++i) {
-		const float bx = mixed_controls(2 * i);
-		const float by = mixed_controls(2 * i + 1);
-		motor_thrusts(i) = sqrtf(bx * bx + by * by);
-		servo_angles(i) = atan2f(by, bx);
-	}
-}
 
 void MyControlAllocator::normalization_thrust(matrix::Vector<float, 4> &motor_thrusts)
 {
@@ -204,19 +279,57 @@ void MyControlAllocator::publish_actuator_motors(const matrix::Vector<float, 4> 
 
 	_actuator_motors_pub.publish(msg);
 }
+void MyControlAllocator::log_data_at_2hz()
+{
+    static hrt_abstime last_log_time = 0;
+    hrt_abstime now = hrt_absolute_time();
+
+    if (now - last_log_time >= 500000) {
+        last_log_time = now;
+
+        PX4_INFO("vehicle_torque_setpoint: [%.2f, %.2f, %.2f]",
+                 (double)_torque_sp.xyz[0],
+                 (double)_torque_sp.xyz[1],
+                 (double)_torque_sp.xyz[2]);
+
+        PX4_INFO("vehicle_thrust_setpoint: [%.2f, %.2f, %.2f]",
+                 (double)_thrust_sp.xyz[0],
+                 (double)_thrust_sp.xyz[1],
+                 (double)_thrust_sp.xyz[2]);
+
+        PX4_INFO("actuator_motors: [%.2f, %.2f, %.2f, %.2f]",
+                 (double)_matrix_T(0),
+                 (double)_matrix_T(1),
+                 (double)_matrix_T(2),
+                 (double)_matrix_T(3));
+	PX4_INFO("angle_servos: [%.2f, %.2f, %.2f, %.2f]",
+                 (double)_matrix_a(0),
+                 (double)_matrix_a(1),
+                 (double)_matrix_a(2),
+                 (double)_matrix_a(3));
+    }
+}
 
 int MyControlAllocator::run()
 {
 	const int fd = uart_init(_device_name);
+
+	if (fd < 0) {
+		return fd;
+	}
 
 	if (set_uart_baudrate(fd, _baudrate) != 0) {
 		::close(fd);
 		return -1;
 	}
 
-	initialize_matrices();
+	if (!_is_initialized) {
+		init();
+		_is_initialized = true;
+	}
 
 	while (!_task_should_exit) {
+
 		if (_thrust_sub.updated()) {
 			_thrust_sub.copy(&_thrust_sp);
 		}
@@ -225,12 +338,16 @@ int MyControlAllocator::run()
 			_torque_sub.copy(&_torque_sp);
 		}
 
-		get_control_matrix(_thrust_sp, _torque_sp, _matrix_ctl);
-		allocation_calculation(_matrix_ctl, _matrix_F, _matrix_a);
-		normalization_thrust(_matrix_F);
-		normalization_servo_angle(_matrix_a);
-		publish_actuator_motors(_matrix_F);
-		write_to_uart(_matrix_a, fd);
+		get_control_matrix(_thrust_sp, _torque_sp, _matrix_U);
+		_allocator.solve_allocation(_matrix_U, _matrix_A, _x_out);
+		for (int i = 0; i < 4; ++i) {
+			_matrix_T(i) = _x_out(2 * i);
+			_matrix_a(i) = _x_out(2 * i + 1);
+		}
+		//normalization_thrust(_matrix_T);
+		//normalization_servo_angle(_matrix_a);
+		//write_to_uart(_matrix_a, fd);
+		log_data_at_2hz();
 
 		usleep(100000);
 	}
@@ -253,72 +370,95 @@ void MyControlAllocator::usage()
 
 int MyControlAllocator::start()
 {
-	if (_is_running) {
-		PX4_INFO("already running");
-		return 0;
-	}
+    if (_instance->_is_running) {
+        PX4_INFO("already running");
+        return 0;
+    }
 
-	_task_should_exit = false;
-	_task_handle = px4_task_spawn_cmd("my_control_allocator",
-					  SCHED_DEFAULT,
-					  SCHED_PRIORITY_DEFAULT,
-					  8192,
-					  task_main,
-					  nullptr);
+    _task_should_exit = false;
+    _task_handle = px4_task_spawn_cmd("my_control_allocator",
+                                      SCHED_DEFAULT,
+                                      SCHED_PRIORITY_DEFAULT,
+                                      8192,
+                                      [](int argc, char *argv[]) { return _instance->task_main(argc, argv); },
+                                      nullptr);
 
-	if (_task_handle < 0) {
-		PX4_ERR("task start failed (%d)", errno);
-		return -errno;
-	}
+    if (_instance->_task_handle < 0) {
+        PX4_ERR("task start failed (%d)", errno);
+        delete _instance;
+        _instance = nullptr;
+        return -errno;
+    }
 
-	_is_running = true;
-	PX4_INFO("started");
-	return 0;
+    _instance->_is_running = true;
+    PX4_INFO("started");
+    return 0;
 }
 
 int MyControlAllocator::stop()
 {
-	if (!_is_running) {
-		PX4_INFO("not running");
-		return 0;
-	}
+    if (_instance && !_instance->_is_running) {
+        PX4_INFO("not running");
+        return 0;
+    }
 
-	_task_should_exit = true;
-	_is_running = false;
-	PX4_INFO("stopping...");
-	return 0;
+    _instance->_task_should_exit = true;
+    _instance->_is_running = false;
+    PX4_INFO("stopping...");
+    return 0;
 }
 
 int MyControlAllocator::status()
 {
-	PX4_INFO("%s", _is_running ? "running" : "stopped");
-	return 0;
+    PX4_INFO("%s", _instance->_is_running ? "running" : "stopped");
+    return 0;
 }
 
 int MyControlAllocator::main(int argc, char *argv[])
 {
-	if (argc < 2) {
-		usage();
-		return -EINVAL;
-	}
+    if (argc < 2) {
+		PX4_INFO("usage: my_control_allocator {start|stop|status}");
+        return -EINVAL;
+    }
 
-	if (!strcmp(argv[1], "start")) {
-		return start();
-	}
+    if (!strcmp(argv[1], "start")) {
+		if (_instance == nullptr) {
+			_instance = new MyControlAllocator();
+		}
 
-	if (!strcmp(argv[1], "stop")) {
-		return stop();
-	}
+		const int ret = _instance->start();
 
-	if (!strcmp(argv[1], "status")) {
-		return status();
-	}
+		if (ret != 0) {
+			delete _instance;
+			_instance = nullptr;
+		}
 
-	usage();
-	return -EINVAL;
+		return ret;
+    }
+
+    if (!strcmp(argv[1], "stop")) {
+		if (_instance == nullptr) {
+			PX4_INFO("not running");
+			return 0;
+		}
+
+        return _instance->stop();
+    }
+
+    if (!strcmp(argv[1], "status")) {
+		if (_instance == nullptr) {
+			PX4_INFO("stopped");
+			return 0;
+		}
+
+        return _instance->status();
+    }
+
+	PX4_INFO("usage: my_control_allocator {start|stop|status}");
+    return -EINVAL;
 }
 
 extern "C" __EXPORT int my_control_allocator_main(int argc, char *argv[])
 {
-	return MyControlAllocator::main(argc, argv);
+    return MyControlAllocator::main(argc, argv);
 }

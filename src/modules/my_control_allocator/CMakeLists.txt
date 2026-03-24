@@ -5,4 +5,6 @@ px4_add_module(
     SRCS
         my_control_allocator.hpp
         my_control_allocator.cpp
+        allocation_calculation.hpp
+        allocation_calculation.cpp
 )
