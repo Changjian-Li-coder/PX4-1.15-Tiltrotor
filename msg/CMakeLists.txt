@@ -147,6 +147,7 @@ set(msg_files
 	MyUartRx.msg
 	MyUartTx.msg
 	MyUartTest.msg
+	MyActuatorMotors.msg
 	ModeCompleted.msg
 	NavigatorMissionItem.msg
 	NormalizedUnsignedSetpoint.msg

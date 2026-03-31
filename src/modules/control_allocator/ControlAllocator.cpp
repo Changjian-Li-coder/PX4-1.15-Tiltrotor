@@ -399,6 +399,7 @@ ControlAllocator::Run()
 		}
 	}
 
+
 	if (do_update) {
 		_last_run = now;
 
@@ -435,6 +436,18 @@ ControlAllocator::Run()
 
 			// Do allocation
 			_control_allocation[i]->allocate();
+
+			// 以下为修改内容
+			my_actuator_motors_s my_actuator_motor;
+			_my_actuator_motors_sub.copy(&my_actuator_motor);
+
+			for (int motor_idx = 0; motor_idx < 4; motor_idx++) {
+				float constrained_val = math::constrain(my_actuator_motor.control[motor_idx], 0.0f, 1.0f);
+				_control_allocation[i]->_actuator_sp(motor_idx) = constrained_val;
+			}
+			// 以上为修改内容
+
+			//光滑处理
 			_actuator_effectiveness->allocateAuxilaryControls(dt, i, _control_allocation[i]->_actuator_sp); //flaps and spoilers
 			_actuator_effectiveness->updateSetpoint(c[i], i, _control_allocation[i]->_actuator_sp,
 								_control_allocation[i]->getActuatorMin(), _control_allocation[i]->getActuatorMax());
@@ -450,6 +463,7 @@ ControlAllocator::Run()
 	// Publish actuator setpoint and allocator status
 	publish_actuator_controls();
 
+
 	// Publish status at limited rate, as it's somewhat expensive and we use it for slower dynamics
 	// (i.e. anti-integrator windup)
 	if (now - _last_status_pub >= 5_ms) {
@@ -460,21 +474,6 @@ ControlAllocator::Run()
 		}
 
 		_last_status_pub = now;
-	}
-
-	// Add logging at 2Hz
-	if(now - _last_log_time >= 500_ms) {
-		PX4_INFO("vehicle_torque_setpoint: [%.2f, %.2f, %.2f]",
-			(double)vehicle_torque_setpoint.xyz[0],
-			(double)vehicle_torque_setpoint.xyz[1],
-			(double)vehicle_torque_setpoint.xyz[2]);
-
-		PX4_INFO("vehicle_thrust_setpoint: [%.2f, %.2f, %.2f]",
-			(double)vehicle_thrust_setpoint.xyz[0],
-			(double)vehicle_thrust_setpoint.xyz[1],
-			(double)vehicle_thrust_setpoint.xyz[2]);
-
-		_last_log_time = now;
 	}
 	perf_end(_loop_perf);
 }
@@ -694,7 +693,6 @@ ControlAllocator::publish_actuator_controls()
 		int selected_matrix = _control_allocation_selection_indexes[actuator_idx];
 		float actuator_sp = _control_allocation[selected_matrix]->getActuatorSetpoint()(actuator_idx_matrix[selected_matrix]);
 		actuator_motors.control[motors_idx] = PX4_ISFINITE(actuator_sp) ? actuator_sp : NAN;
-
 		if (stopped_motors & (1u << motors_idx)) {
 			actuator_motors.control[motors_idx] = NAN;
 		}
@@ -703,13 +701,12 @@ ControlAllocator::publish_actuator_controls()
 		++actuator_idx;
 	}
 
-	for (int i = motors_idx; i < actuator_motors_s::NUM_CONTROLS; i++) {
+	// for (int i = motors_idx; i < actuator_motors_s::NUM_CONTROLS; i++) {
+	for (int i = 4; i < actuator_motors_s::NUM_CONTROLS; i++) {
 		actuator_motors.control[i] = NAN;
 	}
 
 	_actuator_motors_pub.publish(actuator_motors);
-
-	log_actuator_motors_at_2hz(actuator_motors);
 
 	// servos
 	if (_num_actuators[1] > 0) {
@@ -731,15 +728,6 @@ ControlAllocator::publish_actuator_controls()
 	}
 }
 
-void
-ControlAllocator::log_actuator_motors_at_2hz(const actuator_motors_s &actuator_motors)
-{
-        PX4_INFO("actuator_motors: [%.2f, %.2f, %.2f, %.2f]",
-                 (double)actuator_motors.control[0],
-                 (double)actuator_motors.control[1],
-                 (double)actuator_motors.control[2],
-                 (double)actuator_motors.control[3]);
-}
 
 void
 ControlAllocator::check_for_motor_failures()

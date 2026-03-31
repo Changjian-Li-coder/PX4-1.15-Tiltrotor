@@ -4,7 +4,7 @@
 using namespace matrix;
 
 void AllocationCalculation::set_parameters(float lambda_thrust, float lambda_servo, float thrust_min, float thrust_max,
-                       float servo_angle_limit_deg, int max_iter, float learning_rate)
+                       float servo_angle_limit_deg, int max_iter, float lr_thrust, float lr_servo, const matrix::Vector<float, 6>& W)
 {
     _lambda_thrust = fmaxf(0.0f, lambda_thrust);
     _lambda_servo = fmaxf(0.0f, lambda_servo);
@@ -16,7 +16,13 @@ void AllocationCalculation::set_parameters(float lambda_thrust, float lambda_ser
     _servo_angle_limit_rad = fmaxf(1e-3f, servo_limit_abs_deg * (M_PI_F / 180.0f));
 
     _max_iter = max_iter > 0 ? max_iter : 1;
-    _learning_rate = fmaxf(1e-6f, learning_rate);
+
+    // 分离推力和角度的学习率
+    _lr_thrust = fmaxf(1e-6f, lr_thrust);
+    _lr_servo = fmaxf(1e-6f, lr_servo);
+
+    // 保存误差权重向量 (例如: {1, 1, 1, 5, 5, 1} 代表加大对 Roll(3) 和 Pitch(4) 的惩罚)
+    _W = W;
 }
 
 // 核心分配求解器 (使用解析梯度下降)
@@ -43,6 +49,11 @@ void AllocationCalculation::solve_allocation(const matrix::Vector<float, 6>& U_t
         // 2. 计算误差向量 e = A*b - U_target
         error = A * b - U_target;
 
+        // 【新增】应用加权矩阵 W，提升特定轴（如 x/y 轴力矩）的敏感度
+        for (int i = 0; i < 6; ++i) {
+            error(i) *= _W(i);
+        }
+
         // 3. 计算对 b 的梯度: g_b = 2 * A^T * error
         g_b = A_T * error * 2.0f;
 
@@ -61,7 +72,10 @@ void AllocationCalculation::solve_allocation(const matrix::Vector<float, 6>& U_t
         }
 
         // 5. 更新状态
-        x_out -= grad * _learning_rate;
+        for (int i = 0; i < 4; ++i) {
+            x_out(2 * i)     -= grad(2 * i) * _lr_thrust;     // 更新推力
+            x_out(2 * i + 1) -= grad(2 * i + 1) * _lr_servo;  // 更新舵机角度
+        }
 
         // 6. 边界约束 (投影)
         for (int i = 0; i < 4; ++i) {
