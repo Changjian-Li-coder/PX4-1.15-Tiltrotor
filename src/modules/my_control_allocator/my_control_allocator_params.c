@@ -85,7 +85,7 @@ PARAM_DEFINE_FLOAT(MY_LAMBDA_THRUST, 0.05);
  * @max 10.0
  * @group My Control Allocator
  */
-PARAM_DEFINE_FLOAT(MY_LAMBDA_SERVO, 0.1);
+PARAM_DEFINE_FLOAT(MY_LAMBDA_SERVO, 0.08);
 
 /**
  * 推力限幅的最小值
@@ -145,7 +145,7 @@ PARAM_DEFINE_INT32(MY_MAX_ITER, 15);
  * @max 1.0
  * @group My Control Allocator
  */
-PARAM_DEFINE_FLOAT(MY_LR_THRUST, 0.1);
+PARAM_DEFINE_FLOAT(MY_LR_THRUST, 0.02);
 
 /**
  * 梯度下降步长
@@ -157,7 +157,7 @@ PARAM_DEFINE_FLOAT(MY_LR_THRUST, 0.1);
  * @max 1.0
  * @group My Control Allocator
  */
-PARAM_DEFINE_FLOAT(MY_LR_SERVO, 0.4);
+PARAM_DEFINE_FLOAT(MY_LR_SERVO, 0.3);
 
 /**
  * 是否通过串口输出
@@ -204,7 +204,7 @@ PARAM_DEFINE_INT32(MY_WRITE_TIME, 50);
  * @max 1000
  * @group My Control Allocator
  */
-PARAM_DEFINE_FLOAT(MY_SERVO_SCALE, 0.5);
+PARAM_DEFINE_FLOAT(MY_SERVO_SCALE, 0.7);
 
 /**
  * X-Y轴推力权重系数
@@ -248,7 +248,7 @@ PARAM_DEFINE_FLOAT(MY_W_ROLL_PITCH, 10.0);
  * @max  100
  * @group My Control Allocator
  */
-PARAM_DEFINE_FLOAT(MY_W_YAW, 0.6);
+PARAM_DEFINE_FLOAT(MY_W_YAW, 0.4);
 
 /**
  * control allocator的运行频率
@@ -260,3 +260,33 @@ PARAM_DEFINE_FLOAT(MY_W_YAW, 0.6);
  * @group My Control Allocator
  */
 PARAM_DEFINE_INT32(MY_CTL_ALL_RATE, 100);
+
+/**
+ * 舵机角度低通滤波比例系数
+ *
+ * alpha 取值范围 (0, 1]，值越小越平滑且响应越慢，1.0 表示无滤波。
+ * @min 0
+ * @max 1
+ * @group My Control Allocator
+ */
+PARAM_DEFINE_FLOAT(MY_SER_LP_A, 0.8);
+
+/**
+ * 舵机角度变化最小值限幅
+ *
+ * 舵机角度变化最小值限幅。
+ * @min -1.0
+ * @max 1.0
+ * @group My Control Allocator
+ */
+PARAM_DEFINE_FLOAT(MY_SER_DEL_MIN, -0.8);
+
+/**
+ * 舵机角度变化最大值限幅
+ *
+ * 舵机角度变化最大值限幅。
+ * @min -1.0
+ * @max 1.0
+ * @group My Control Allocator
+ */
+PARAM_DEFINE_FLOAT(MY_SER_DEL_MAX, 0.8);

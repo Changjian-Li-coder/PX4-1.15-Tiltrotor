@@ -10,6 +10,7 @@
 #include <parameters/param.h>
 
 #include <matrix/matrix/math.hpp>
+#include <mathlib/math/Limits.hpp>
 #include "allocation_calculation.hpp"
 
 class MyControlAllocator
@@ -32,8 +33,6 @@ private:
 	void init();
 	void initialize_matrices();
 	void get_control_matrix(const vehicle_thrust_setpoint_s &thrust, const vehicle_torque_setpoint_s &torque, matrix::Vector<float, 6> &control_matrix);
-	void normalization_thrust(matrix::Vector<float, 4> &motor_thrusts);
-	void normalization_servo_angle(matrix::Vector<float, 4> &servo_angles);
 	void write_to_uart(const matrix::Vector<float, 4> &servo_angles, int fd);
 	void publish_actuator_motors(const matrix::Vector<float, 4> &motor_throttle);
 
@@ -81,6 +80,9 @@ private:
 	param_t _param_my_w_roll_pitch = PARAM_INVALID;
 	param_t _param_my_w_yaw = PARAM_INVALID;
 	param_t _param_my_CTL_ALL_RATE = PARAM_INVALID;
+	param_t _param_my_servo_lp_alpha = PARAM_INVALID;
+	param_t _param_my_servo_delta_min = PARAM_INVALID;
+	param_t _param_my_servo_delta_max = PARAM_INVALID;
 
 	// 参数缓存值
 	float _L = 0.18f;  // 轴距365mm
@@ -101,6 +103,9 @@ private:
 	int32_t _write_time = 50; // ms
 	float _servo_scale = 1.0f;
 	int32_t _ctl_all_rate = 100; // Hz
+	float _servo_lp_alpha = 0.15f;
+	float _servo_delta_min = -0.15f;
+	float _servo_delta_max = 0.15f;
 
 	vehicle_torque_setpoint_s _torque_sp;
 	vehicle_thrust_setpoint_s _thrust_sp;

@@ -38,6 +38,9 @@ void MyControlAllocator::parameters_init()
 	_param_my_w_roll_pitch = param_find("MY_W_ROLL_PITCH");
 	_param_my_w_yaw = param_find("MY_W_YAW");
 	_param_my_CTL_ALL_RATE = param_find("MY_CTL_ALL_RATE");
+	_param_my_servo_lp_alpha = param_find("MY_SER_LP_A");
+	_param_my_servo_delta_min = param_find("MY_SER_DEL_MIN");
+	_param_my_servo_delta_max = param_find("MY_SER_DEL_MAX");
 }
 
 void MyControlAllocator::update_tau_max()
@@ -68,6 +71,9 @@ void MyControlAllocator::parameters_update()
 	float w_roll_pitch = 1.0f;
 	float w_yaw = 1.0f;
 	int32_t ctl_all_rate = 20;
+	float servo_lp_alpha = 0.15f;
+	float servo_delta_min = 0.01f;
+	float servo_delta_max = 0.15f;
 
 	if (_param_my_l != PARAM_INVALID) {
 		(void)param_get(_param_my_l, &l);
@@ -137,6 +143,15 @@ void MyControlAllocator::parameters_update()
 	if ( _param_my_CTL_ALL_RATE != PARAM_INVALID) {
 		(void)param_get(_param_my_CTL_ALL_RATE, &ctl_all_rate);
 	}
+	if ( _param_my_servo_lp_alpha != PARAM_INVALID) {
+		(void)param_get(_param_my_servo_lp_alpha, &servo_lp_alpha);
+	}
+	if ( _param_my_servo_delta_min != PARAM_INVALID) {
+		(void)param_get(_param_my_servo_delta_min, &servo_delta_min);
+	}
+	if ( _param_my_servo_delta_max != PARAM_INVALID) {
+		(void)param_get(_param_my_servo_delta_max, &servo_delta_max);
+	}
 
 	const bool geometry_changed = (fabsf(l - _L) > 1e-6f) || (fabsf(k - _kf) > 1e-6f);
 
@@ -155,6 +170,9 @@ void MyControlAllocator::parameters_update()
 	_write_time = write_time;
 	_servo_scale = servo_scale;
 	_ctl_all_rate = ctl_all_rate;
+	_servo_lp_alpha = servo_lp_alpha;
+	_servo_delta_min = servo_delta_min;
+	_servo_delta_max = servo_delta_max;
 
 	_W(0) = w_xy;
 	_W(1) = w_xy;
@@ -228,7 +246,6 @@ void MyControlAllocator::init()
 {
 	parameters_init();
 	parameters_update();
-
 	for (int i = 0; i < 4; ++i) {
 		_x_out(2 * i) = _thrust_min; // 给一个微小的初始推力，避免梯度为0
 		_x_out(2 * i + 1) = 0.0f; // 舵机回中
@@ -257,6 +274,7 @@ void MyControlAllocator::initialize_matrices()
 	_matrix_A(5, 0) =   _kf;    _matrix_A(5, 1) =  _L;      _matrix_A(5, 2) =   _kf;    _matrix_A(5, 3) =  _L;
 	_matrix_A(5, 4) =  -_kf;    _matrix_A(5, 5) =  _L;      _matrix_A(5, 6) =  -_kf;    _matrix_A(5, 7) =  _L;
 
+	_matrix_a.setZero();
 	if (!matrix::geninv(_matrix_A, _matrix_mix)) {
 		PX4_ERR("failed to compute pseudo-inverse for matrix_A");
 	}
@@ -271,31 +289,6 @@ void MyControlAllocator::get_control_matrix(const vehicle_thrust_setpoint_s &thr
 	control_matrix(3) = torque.xyz[0] * _tau_roll_max;
 	control_matrix(4) = torque.xyz[1] * _tau_pitch_max;
 	control_matrix(5) = torque.xyz[2] * _tau_yaw_max;
-}
-
-
-void MyControlAllocator::normalization_thrust(matrix::Vector<float, 4> &motor_thrusts)
-{
-	// Normalize motor thrusts to prevent overflow
-	float max_thrust = 0.0f;
-	for (int i = 0; i < 4; ++i) {
-		max_thrust = fmaxf(max_thrust, motor_thrusts(i));
-	}
-	if (max_thrust > 1.0f) {
-		motor_thrusts /= max_thrust;
-	}
-}
-
-void MyControlAllocator::normalization_servo_angle(matrix::Vector<float, 4> &servo_angles)
-{
-	// Normalize servo angles to prevent overflow (threshold can be adjusted)
-	float max_abs = 0.0f;
-	for (int i = 0; i < 4; ++i) {
-		max_abs = fmaxf(max_abs, fabsf(servo_angles(i)));
-	}
-	if (max_abs > 1.0f) {
-		servo_angles /= max_abs;
-	}
 }
 
 void MyControlAllocator::write_to_uart(const matrix::Vector<float, 4> &servo_angles, int fd)
@@ -313,9 +306,7 @@ void MyControlAllocator::write_to_uart(const matrix::Vector<float, 4> &servo_ang
 
     for (int i = 0; i < 4; ++i) {
 
-        int quant = servo_angles(i) * 500 + 500;
-        if (quant < 200) { quant = 200; }
-        if (quant > 800) { quant = 800; }
+        int quant = servo_angles(i) * 500 + 500; // 将 -1~1 的舵机角度映射到 0~1000 的量化值
 
         const uint8_t low_byte = quant & 0xFF;
         const uint8_t high_byte = (quant >> 8) & 0xFF;
@@ -396,8 +387,12 @@ int MyControlAllocator::run()
 
 	hrt_abstime last_time = hrt_absolute_time();
 	hrt_abstime last_write_time = hrt_absolute_time();
+	hrt_abstime last_param_update_time = hrt_absolute_time();
+
 	const hrt_abstime interval = 1000000/ _ctl_all_rate; // 10 ms (100 Hz)
 	const hrt_abstime write_interval = 50000; // 50 ms (20 Hz)
+	const hrt_abstime param_update_interval = 1000000; // 1 second (1 Hz)
+
 	while (!_task_should_exit) {
 
 		if (_thrust_sub.updated()) {
@@ -415,11 +410,20 @@ int MyControlAllocator::run()
 		_allocator.solve_allocation(_matrix_U, _matrix_A, _x_out);
 		for (int i = 0; i < 4; ++i) {
 			_matrix_T(i) = _x_out(2 * i);
-			_matrix_a(i) = _x_out(2 * i + 1) * _servo_scale; // 应用舵机缩放系数
+			float target_a = _x_out(2 * i + 1) * _servo_scale; // 应用舵机缩放系数
+
+			float delta_angle = math::constrain(target_a - _matrix_a(i), _servo_delta_min, _servo_delta_max);
+			// 舵机角度解算值的平滑处理 (低通滤波/指数移动平均)
+			// alpha 取值范围 (0, 1]，值越小越平滑且响应越慢，1.0 表示无滤波。可根据运行频率调整
+			_matrix_a(i) = (1.0f - _servo_lp_alpha) * _matrix_a(i) + _servo_lp_alpha * (delta_angle + _matrix_a(i));
 		}
 
 		hrt_abstime now = hrt_absolute_time();
-
+		if (now - last_param_update_time >= param_update_interval) {
+			last_param_update_time = now;
+			parameters_update();
+			PX4_INFO("parameters updated:%f", (double)_servo_scale);
+		}
 		if (now - last_time >= interval && _is_pub_ctl) {
 			last_time = now;
 			publish_actuator_motors(_matrix_T);
