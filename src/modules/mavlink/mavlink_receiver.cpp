@@ -136,6 +136,9 @@ void
 MavlinkReceiver::handle_message(mavlink_message_t *msg)
 {
 	switch (msg->msgid) {
+	case MAVLINK_MSG_ID_SET_ACTUATOR_CONTROL_TARGET:  //自定义消息
+		handle_message_set_actuator_control_target(msg);
+		break;
 	case MAVLINK_MSG_ID_COMMAND_LONG:
 		handle_message_command_long(msg);
 		break;
@@ -402,6 +405,22 @@ MavlinkReceiver::evaluate_target_ok(int command, int target_system, int target_c
 	}
 
 	return target_ok;
+}
+
+// 自定义函数
+void MavlinkReceiver::handle_message_set_actuator_control_target(mavlink_message_t *msg)
+{
+	mavlink_set_actuator_control_target_t actuator_control;
+	mavlink_msg_set_actuator_control_target_decode(msg, &actuator_control);
+
+	my_actuator_control_s ac{};
+	ac.timestamp = hrt_absolute_time();
+	ac.group = actuator_control.group_mix;
+	for (int i = 0; i < 8; i++) {
+	ac.controls[i] = actuator_control.controls[i];
+	}
+
+	_actuator_control_pub.publish(ac);
 }
 
 void

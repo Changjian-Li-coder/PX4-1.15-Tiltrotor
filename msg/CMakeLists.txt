@@ -144,10 +144,11 @@ set(msg_files
 	Mission.msg
 	MissionResult.msg
 	MountOrientation.msg
-	MyUartRx.msg
-	MyUartTx.msg
-	MyUartTest.msg
-	MyActuatorMotors.msg
+	MyUartRx.msg  #自定义消息
+	MyUartTx.msg  #自定义消息
+	MyUartTest.msg  #自定义消息
+	MyActuatorMotors.msg  #自定义消息
+	MyActuatorControl.msg  #自定义消息
 	ModeCompleted.msg
 	NavigatorMissionItem.msg
 	NormalizedUnsignedSetpoint.msg

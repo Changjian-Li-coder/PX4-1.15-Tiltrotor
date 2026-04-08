@@ -6,7 +6,10 @@
 #include <uORB/topics/my_actuator_motors.h>
 #include <uORB/topics/vehicle_thrust_setpoint.h>
 #include <uORB/topics/vehicle_torque_setpoint.h>
-#include <uORB/topics/hover_thrust_estimate.h>
+#include <uORB/topics/debug_array.h>
+#include <uORB/topics/my_actuator_control.h>
+
+
 #include <parameters/param.h>
 
 #include <matrix/matrix/math.hpp>
@@ -83,6 +86,7 @@ private:
 	param_t _param_my_servo_lp_alpha = PARAM_INVALID;
 	param_t _param_my_servo_delta_min = PARAM_INVALID;
 	param_t _param_my_servo_delta_max = PARAM_INVALID;
+	param_t _param_my_re_channel = PARAM_INVALID;
 
 	// 参数缓存值
 	float _L = 0.18f;  // 轴距365mm
@@ -106,13 +110,21 @@ private:
 	float _servo_lp_alpha = 0.15f;
 	float _servo_delta_min = -0.15f;
 	float _servo_delta_max = 0.15f;
+	int32_t _re_channel = 0;
 
 	vehicle_torque_setpoint_s _torque_sp;
 	vehicle_thrust_setpoint_s _thrust_sp;
-	hover_thrust_estimate_s _hover_thrust;
+	my_actuator_control_s _actuator_control_sp;
+	debug_array_s _debug_array;
+	my_actuator_control_s _my_actuator_control_sp;
+
 	uORB::Subscription _thrust_sub{ORB_ID(vehicle_thrust_setpoint)};
 	uORB::Subscription _torque_sub{ORB_ID(vehicle_torque_setpoint)};
-	uORB::Subscription _hover_thrust_sub{ORB_ID(hover_thrust_estimate)};
+	//接收上位机数据
+	uORB::Subscription _ctl_sub{ORB_ID(my_actuator_control)};
+	uORB::Subscription _debug_array_sub{ORB_ID(debug_array)};
+	uORB::Subscription _my_ctl_sub{ORB_ID(my_actuator_control)};
+
 	uORB::Publication<my_actuator_motors_s> _my_actuator_motors_pub{ORB_ID(my_actuator_motors)};
 
 	AllocationCalculation _allocator;

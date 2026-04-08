@@ -45,3 +45,4 @@ param set-default MY_CTL_ALL_RATE 100
 param set-default MY_SERVO_LP_ALPHA 0.15
 param set-default MY_SER_DEL_MIN -0.15
 param set-default MY_SER_DEL_MAX 0.15
+param set-default MY_RE_CHANNEL 0

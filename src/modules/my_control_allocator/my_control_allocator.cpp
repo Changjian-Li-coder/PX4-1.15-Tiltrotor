@@ -41,6 +41,7 @@ void MyControlAllocator::parameters_init()
 	_param_my_servo_lp_alpha = param_find("MY_SER_LP_A");
 	_param_my_servo_delta_min = param_find("MY_SER_DEL_MIN");
 	_param_my_servo_delta_max = param_find("MY_SER_DEL_MAX");
+	_param_my_re_channel = param_find("MY_RE_CHANNEL");
 }
 
 void MyControlAllocator::update_tau_max()
@@ -74,6 +75,7 @@ void MyControlAllocator::parameters_update()
 	float servo_lp_alpha = 0.15f;
 	float servo_delta_min = 0.01f;
 	float servo_delta_max = 0.15f;
+	int32_t re_channel = 0;
 
 	if (_param_my_l != PARAM_INVALID) {
 		(void)param_get(_param_my_l, &l);
@@ -152,6 +154,9 @@ void MyControlAllocator::parameters_update()
 	if ( _param_my_servo_delta_max != PARAM_INVALID) {
 		(void)param_get(_param_my_servo_delta_max, &servo_delta_max);
 	}
+	if ( _param_my_re_channel != PARAM_INVALID) {
+		(void)param_get(_param_my_re_channel, &re_channel);
+	}
 
 	const bool geometry_changed = (fabsf(l - _L) > 1e-6f) || (fabsf(k - _kf) > 1e-6f);
 
@@ -173,6 +178,7 @@ void MyControlAllocator::parameters_update()
 	_servo_lp_alpha = servo_lp_alpha;
 	_servo_delta_min = servo_delta_min;
 	_servo_delta_max = servo_delta_max;
+	_re_channel = re_channel;
 
 	_W(0) = w_xy;
 	_W(1) = w_xy;
@@ -344,26 +350,26 @@ void MyControlAllocator::log_data_at_2hz()
     if (now - last_log_time >= 500000) {
         last_log_time = now;
 
-        // PX4_INFO("vehicle_torque_setpoint: [%.2f, %.2f, %.2f]",
-        //          (double)_matrix_U(3),
-        //          (double)_matrix_U(4),
-        //          (double)_matrix_U(5));
+        // // PX4_INFO("vehicle_torque_setpoint: [%.2f, %.2f, %.2f]",
+        // //          (double)_matrix_U(3),
+        // //          (double)_matrix_U(4),
+        // //          (double)_matrix_U(5));
 
-        PX4_INFO("vehicle_thrust_setpoint: [%.2f, %.2f, %.2f]",
-                 (double)_matrix_U(0),
-                 (double)_matrix_U(1),
-                 (double)_matrix_U(2));
+        // PX4_INFO("vehicle_thrust_setpoint: [%.2f, %.2f, %.2f]",
+        //          (double)_matrix_U(0),
+        //          (double)_matrix_U(1),
+        //          (double)_matrix_U(2));
 
         PX4_INFO("actuator_motors: [%.2f, %.2f, %.2f, %.2f]",
                  (double)_matrix_T(0),
                  (double)_matrix_T(1),
                  (double)_matrix_T(2),
                  (double)_matrix_T(3));
-	// PX4_INFO("angle_servos: [%.2f, %.2f, %.2f, %.2f]",
-        //          (double)(_matrix_a(0) * 120),
-        //          (double)(_matrix_a(1) * 120),
-        //          (double)(_matrix_a(2) * 120),
-        //          (double)(_matrix_a(3) * 120));
+	PX4_INFO("angle_servos: [%.2f, %.2f, %.2f, %.2f]",
+                 (double)(_matrix_a(0) * 120),
+                 (double)(_matrix_a(1) * 120),
+                 (double)(_matrix_a(2) * 120),
+                 (double)(_matrix_a(3) * 120));
     }
 }
 
@@ -391,38 +397,57 @@ int MyControlAllocator::run()
 
 	const hrt_abstime interval = 1000000/ _ctl_all_rate; // 10 ms (100 Hz)
 	const hrt_abstime write_interval = 50000; // 50 ms (20 Hz)
-	const hrt_abstime param_update_interval = 1000000; // 1 second (1 Hz)
+	const hrt_abstime param_update_interval = 3000000; // 3 second (0.33 Hz)
 
 	while (!_task_should_exit) {
 
+		/* 不需要接收thrust和torque的更新，控制量直接由上位机发送过来，解算交给上位机完成，这里只需要接收上位机发送的控制量即可
 		if (_thrust_sub.updated()) {
 			_thrust_sub.copy(&_thrust_sp);
 		}
 
 		if (_torque_sub.updated()) {
 			_torque_sub.copy(&_torque_sp);
-		}
-		if (_hover_thrust_sub.updated()) {
-			_hover_thrust_sub.copy(&_hover_thrust);
+		}*/
+
+		if (_my_ctl_sub.updated()) {
+			_my_ctl_sub.copy(&_my_actuator_control_sp);
 		}
 
-		get_control_matrix(_thrust_sp, _torque_sp, _matrix_U);
-		_allocator.solve_allocation(_matrix_U, _matrix_A, _x_out);
+		if (_debug_array_sub.updated()) {
+			_debug_array_sub.copy(&_debug_array);
+		}
+
+		/* 解算交给上位机NMPC完成，这里直接映射控制量到输出
+		// get_control_matrix(_thrust_sp, _torque_sp, _matrix_U);
+		 _allocator.solve_allocation(_matrix_U, _matrix_A, _x_out);*/
+
 		for (int i = 0; i < 4; ++i) {
-			_matrix_T(i) = _x_out(2 * i);
-			float target_a = _x_out(2 * i + 1) * _servo_scale; // 应用舵机缩放系数
+			if (_re_channel == 0) {
+				_matrix_T(i) = _my_actuator_control_sp.controls[i]; // 直接使用上位机发送的控制量作为推力输出
+				float target_a = _my_actuator_control_sp.controls[4+i] * _servo_scale; // 直接使用上位机发送的控制量作为舵机角度输入
+				float delta_angle = math::constrain(target_a - _matrix_a(i), _servo_delta_min, _servo_delta_max);
+				// 舵机角度解算值的平滑处理 (低通滤波/指数移动平均)
+				// alpha 取值范围 (0, 1]，值越小越平滑且响应越慢，1.0 表示无滤波。可根据运行频率调整
+				_matrix_a(i) = (1.0f - _servo_lp_alpha) * _matrix_a(i) + _servo_lp_alpha * (delta_angle + _matrix_a(i));
+			}
+			else if (_re_channel == 1) {
+				_matrix_T(i) = _debug_array.data[i]; // 直接使用上位机发送的控制量作为推力输出
+				float target_a = _debug_array.data[4+i] * _servo_scale; // 直接使用上位机发送的控制量作为舵机角度输入
+				float delta_angle = math::constrain(target_a - _matrix_a(i), _servo_delta_min, _servo_delta_max);
+				// 舵机角度解算值的平滑处理 (低通滤波/指数移动平均)
+				// alpha 取值范围 (0, 1]，值越小越平滑且响应越慢，1.0 表示无滤波。可根据运行频率调整
+				_matrix_a(i) = (1.0f - _servo_lp_alpha) * _matrix_a(i) + _servo_lp_alpha * (delta_angle + _matrix_a(i));
+			}
 
-			float delta_angle = math::constrain(target_a - _matrix_a(i), _servo_delta_min, _servo_delta_max);
-			// 舵机角度解算值的平滑处理 (低通滤波/指数移动平均)
-			// alpha 取值范围 (0, 1]，值越小越平滑且响应越慢，1.0 表示无滤波。可根据运行频率调整
-			_matrix_a(i) = (1.0f - _servo_lp_alpha) * _matrix_a(i) + _servo_lp_alpha * (delta_angle + _matrix_a(i));
+
 		}
+		log_data_at_2hz();
 
 		hrt_abstime now = hrt_absolute_time();
 		if (now - last_param_update_time >= param_update_interval) {
 			last_param_update_time = now;
 			parameters_update();
-			PX4_INFO("parameters updated:%f", (double)_servo_scale);
 		}
 		if (now - last_time >= interval && _is_pub_ctl) {
 			last_time = now;

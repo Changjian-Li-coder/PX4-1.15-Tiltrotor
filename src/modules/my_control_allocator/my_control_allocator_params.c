@@ -290,3 +290,12 @@ PARAM_DEFINE_FLOAT(MY_SER_DEL_MIN, -0.8);
  * @group My Control Allocator
  */
 PARAM_DEFINE_FLOAT(MY_SER_DEL_MAX, 0.8);
+
+/**
+ * 上位机数据来源
+ *
+ * 0：DebugValue/send;1:actuator_control。
+
+ * @group My Control Allocator
+ */
+PARAM_DEFINE_INT32(MY_RE_CHANNEL, 0);
