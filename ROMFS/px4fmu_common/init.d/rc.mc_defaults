@@ -1,0 +1,43 @@
+#!/bin/sh
+#
+# Multicopter default parameters.
+#
+# NOTE: Script variables are declared/initialized/unset in the rcS script.
+#
+
+set VEHICLE_TYPE mc
+
+# MAV_TYPE_QUADROTOR 2
+param set-default MAV_TYPE 2
+
+if param compare IMU_GYRO_RATEMAX 400
+then
+	param set-default IMU_GYRO_RATEMAX 800
+fi
+
+param set-default NAV_ACC_RAD 2
+
+param set-default RTL_RETURN_ALT 30
+param set-default RTL_DESCEND_ALT 10
+
+param set-default GPS_UBX_DYNMODEL 6
+
+# 自定义参数初始化
+param set-default MY_L 0.182
+param set-default MY_K 0.01
+param set-default MY_THRUST_MIN 0.1
+param set-default MY_THRUST_MAX 20
+param set-default MY_SER_ANG_LIM 22.5
+param set-default MY_IS_WRITE 1
+param set-default MY_IS_PUB_CTL 1
+param set-default MY_WRITE_TIME 50
+param set-default MY_SERVO_SCALE 1.0
+param set-default MY_W_XY 1.0
+param set-default MY_W_Z 1.0
+param set-default MY_CTL_ALL_RATE 100
+param set-default MY_CTL_SER_RATE 50
+param set-default MY_SERVO_LP_ALPHA 0.8
+param set-default MY_SER_DEL_MIN -0.15
+param set-default MY_SER_DEL_MAX 0.15
+param set-default MY_RE_CHANNEL 0
+param set-default MY_IS_LOG 0
