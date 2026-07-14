@@ -38,7 +38,12 @@ private:
 	void initialize_matrices();
 	void get_control_matrix(const vehicle_thrust_setpoint_s &thrust, const vehicle_torque_setpoint_s &torque, matrix::Vector<float, 6> &control_matrix);
 	void write_to_uart(const matrix::Vector<float, 4> &servo_angles, int fd);
+	void send_servo_write_once(int fd);
+	void send_read_command(int fd);
+	void read_and_parse_uart_feedback(int fd);
 	void publish_actuator_motors(const matrix::Vector<float, 4> &motor_throttle);
+	float solve_throttle_from_thrust(float thrust);
+	void cal_checksum(uint8_t *buf, int len);
 
 	void log_data_at_2hz();
 	void parameters_init();
@@ -50,7 +55,7 @@ private:
 	int _task_handle = -1;
 	bool _is_initialized = false;
 	const char *_device_name = "/dev/ttyS2";
-	const unsigned _baudrate = 9600;
+	const unsigned _baudrate = 115200;
 
 	matrix::Matrix<float, 6, 8> _matrix_A;
 	matrix::Matrix<float, 8, 6> _matrix_mix;
@@ -83,6 +88,8 @@ private:
 	param_t _param_my_servo_delta_max = PARAM_INVALID;
 	param_t _param_my_re_channel = PARAM_INVALID;
 	param_t _param_my_is_log = PARAM_INVALID;
+	param_t _param_my_ser_angle = PARAM_INVALID;
+	param_t _param_my_param_update = PARAM_INVALID;
 
 
 	// 参数缓存值
@@ -105,7 +112,21 @@ private:
 	float _servo_delta_max = 0.15f;
 	int32_t _re_channel = 0;
 	int32_t _is_log = 0;
+	int32_t _ser_angle = 0;
+	int32_t _param_update_interval = 0;
 
+	bool _servo_write_done = false;  // 舵机角度控制指令是否已发送一次
+	matrix::Vector<float, 4> _servo_feedback_angle;  // 舵机反馈角度（已转换为度）
+
+	// UART接收缓冲区
+	static constexpr int _uart_buf_size = 256;
+	uint8_t _uart_rx_buf[_uart_buf_size]{};
+	int _uart_rx_len = 0;
+
+	// CSV数据记录（用于舵机阶跃响应分析）
+	FILE *_csv_file = nullptr;
+	hrt_abstime _last_csv_time = 0;
+	void write_csv_row(hrt_abstime now);
 
 	vehicle_torque_setpoint_s _torque_sp;
 	vehicle_thrust_setpoint_s _thrust_sp;

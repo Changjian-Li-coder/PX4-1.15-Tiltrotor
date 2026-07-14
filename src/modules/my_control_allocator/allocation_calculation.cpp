@@ -15,7 +15,6 @@ void AllocationCalculation::set_parameters(float servo_angle_limit_deg, const ma
     _W = W;
     _servo_angle_limit_rad = servo_angle_limit_deg * M_PI_F / 180.f;
     // 可选：初始化6维输出权重（示例：加大Roll/Pitch权重）
-    W_u.setZero();
     A_T.setZero();
     A_W_T.setZero();
     A_W_A_T.setZero();
@@ -25,8 +24,6 @@ void AllocationCalculation::set_parameters(float servo_angle_limit_deg, const ma
     alpha.setZero();
     alpha_clamped_rad.setZero();
     C.setZero();
-    W_u(0,0) = 1.f; W_u(1,1) = 1.f; W_u(2,2) = 1.f;
-    W_u(3,3) = 5.f; W_u(4,4) = 5.f; W_u(5,5) = 1.f;
 }
 
 void AllocationCalculation::solve_allocation(const matrix::Vector<float, 6>& U_target, const matrix::Matrix<float, 6, 8>& A, matrix::Vector<float, 8>& x_out) {
@@ -72,44 +69,27 @@ void AllocationCalculation::solve_allocation(const matrix::Vector<float, 6>& U_t
         }
         x_out(i + 4) = alpha_clamped_rad(i) * 180.f / M_PI_F; // 限幅后的角度写入x_out后4位
     }
-
-
-    // // ========== 第二步：固定α_clamped，重新求解F ==========
-    // // 构造8x4的系数矩阵C
-    // C.setZero();
-    // for (int i = 0; i < 4; i++) {
-    //     C(2*i,   i) = std::cos(alpha_clamped_rad(i));
-    //     C(2*i+1, i) = std::sin(alpha_clamped_rad(i));
+    // ---------------------- 新增：反向验证分配误差 ----------------------
+    // 1. 从x_out重构8维输入向量b_recon（还原推力的x/y分量）
+    // matrix::Vector<float, 8> b_recon;
+    // b_recon.setZero();
+    // for (int i = 0; i < 4; ++i) {
+    //     float F_i = x_out(i);                          // 第i个执行器的推力幅值
+    //     float alpha_rad = x_out(i+4) * M_PI_F / 180.f; // 限幅后的角度转回弧度
+    //     // 重构推力的x/y分量
+    //     b_recon(2*i)   = F_i * std::cos(alpha_rad);
+    //     b_recon(2*i+1) = F_i * std::sin(alpha_rad);
     // }
 
-    // // 构建M = A*C（6x4）
-    // matrix::Matrix<float, 6, 4> M = A * C;
-    // matrix::Matrix<float, 4, 6> M_T = M.transpose();
+    // // 2. 反向计算实际输出U_recon = A * b_recon（分配矩阵正向计算）
+    // matrix::Vector<float, 6> U_recon = A * b_recon;
 
-    // // 加权最小二乘求解：F = (M^T * W_u * M)^{-1} * M^T * W_u * U_target
-    // matrix::Matrix<float, 4, 4> M_T_Wu_M = M_T * W_u * M;
-    // matrix::Matrix<float, 4, 4> M_T_Wu_M_inv;
+    // // 3. 计算分配误差（各维度误差 + 整体范数误差）
+    // matrix::Vector<float, 6> U_error = U_recon - U_target;
+    // float error_norm = U_error.norm(); // 误差的2-范数（整体误差大小）
 
-    // if (!matrix::geninv(M_T_Wu_M, M_T_Wu_M_inv)) {
-    //     PX4_WARN("Constrained matrix inversion failed, use initial F");
-    //     // 回退到初始F，并保证非负
-    //     for (int i = 0; i < 4; i++) {
-    //         if (F(i) < 0) {
-    //             F(i) = 0; // 推力非负
-    //         }
-    //         x_out(i) = F(i); // 推力非负
-    //     }
-    //     return;
-    // }
-
-    // // 求解最优F
-    // matrix::Vector<float, 4> F_clamped = M_T_Wu_M_inv * M_T * W_u * U_target;
-
-    // // 推力非负限幅（物理约束）
-    // for (int i = 0; i < 4; i++) {
-    //     if (F_clamped(i) < 0) {
-    //         F_clamped(i) = 0; // 推力非负
-    //     }
-    //     x_out(i) = F_clamped(i); // 写入最终推力
-    // }
+    // 4. 通过PX4_INFO输出误差信息
+    // PX4_INFO("[Allocation Error] Norm: %.4f", (double)error_norm);
+    // PX4_INFO("X-err: %.4f, Y-err: %.4f, Z-err: %.4f",(double)U_error(0), (double)U_error(1), (double)U_error(2));
+    // PX4_INFO("Roll-err: %.4f, Pitch-err: %.4f, Yaw-err: %.4f",(double)U_error(3), (double)U_error(4), (double)U_error(5));
 }

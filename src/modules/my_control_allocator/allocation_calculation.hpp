@@ -10,7 +10,6 @@ private:
 	// 可调参数（由外部注入）
 
 	matrix::Matrix<float, 8,8> _W;
-	matrix::Matrix<float, 6,6> W_u;
 	float _servo_angle_limit_rad; // 舵机角度限制（单位：弧度）
 
 	matrix::Vector<float, 8> b;

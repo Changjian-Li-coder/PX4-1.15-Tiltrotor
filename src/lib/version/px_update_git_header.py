@@ -121,13 +121,13 @@ header += f"""
 
 # Mavlink
 if (os.path.exists('src/modules/mavlink/mavlink/.git')):
-    mavlink_git_version = subprocess.check_output('git rev-parse --verify HEAD'.split(),
-                                      cwd='src/modules/mavlink/mavlink', stderr=subprocess.STDOUT).decode('utf-8').strip()
-    mavlink_git_version_short = mavlink_git_version[0:16]
-
-    header += f"""
-#define MAVLINK_LIB_GIT_VERSION_STR  "{mavlink_git_version}"
-#define MAVLINK_LIB_GIT_VERSION_BINARY 0x{mavlink_git_version_short}
+#    mavlink_git_version = subprocess.check_output('git rev-parse --verify HEAD'.split(),
+#                                      cwd='src/modules/mavlink/mavlink', stderr=subprocess.STDOUT).decode('utf-8').strip()
+#    mavlink_git_version_short = mavlink_git_version[0:16]
+#
+#    header += f"""
+##define MAVLINK_LIB_GIT_VERSION_STR  "{mavlink_git_version}"
+##define MAVLINK_LIB_GIT_VERSION_BINARY 0x{mavlink_git_version_short}
 """
 
 

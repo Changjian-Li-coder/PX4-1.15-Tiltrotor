@@ -429,7 +429,10 @@ else
 		. $BOARD_RC_MAVLINK
 	fi
 	unset BOARD_RC_MAVLINK
-
+	# 强制设置机载模式 LOCAL_POSITION_NED 为100Hz（MAVROS专用）
+	mavlink stream -d /dev/ttyS1 -r 100 -s LOCAL_POSITION_NED -m onboard
+	# 同步提升姿态频率，保证数据完整
+	mavlink stream -d /dev/ttyS1 -r 100 -s ATTITUDE_QUATERNION -m onboard
 	#
 	# Start UART/Serial device drivers.
 	# Note: rc.serial is auto-generated from Tools/serial/generate_config.py

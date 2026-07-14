@@ -160,7 +160,7 @@ PARAM_DEFINE_INT32(MY_CTL_ALL_RATE, 100);
  * @unit Hz
  * @group My Control Allocator
  */
-PARAM_DEFINE_INT32(MY_CTL_SER_RATE, 50);
+PARAM_DEFINE_INT32(MY_CTL_SER_RATE, 100);
 
 /**
  * 舵机角度低通滤波比例系数
@@ -204,3 +204,18 @@ PARAM_DEFINE_INT32(MY_RE_CHANNEL, 1);
  * @group My Control Allocator
  */
 PARAM_DEFINE_INT32(MY_IS_LOG, 0);
+
+/**
+ * 测试：舵机角度
+ *
+ * @group My Control Allocator
+ */
+PARAM_DEFINE_INT32(MY_SER_ANGLE, 0);
+
+/**
+ * 参数更新时间间隔
+ *
+ * @unit ms
+ * @group My Control Allocator
+ */
+PARAM_DEFINE_INT32(MY_PARAM_UPDATE, 3000);
